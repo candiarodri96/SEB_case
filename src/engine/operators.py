@@ -34,10 +34,11 @@ def equals(actual, threshold):
 def max_percentage_of_account(actual, threshold, account_total):
     """True if actual is at or below threshold percent of the account total"""
     if actual is None:
-        return None, 'value missing'
+        return None, 'value missing', None
     if not account_total:
-        return None, 'account total missing or zero'
-    return (actual / account_total) * 100 <= threshold, None
+        return None, 'account total missing or zero', None
+    pct = (actual / account_total) * 100
+    return pct <= threshold, None, round(pct, 2)
 
 OPERATORS = {
     'min_rating': min_rating,

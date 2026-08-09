@@ -6,18 +6,18 @@ random.seed(42)
 
 INSTRUMENTS = [
     # isin, name, asset_class, issuer, rating, listing_status, domicile
-    ["SE0000108656", "Volvo B",             "equity", "Volvo AB",        "",     "LISTED", ""],
-    ["SE0000163594", "Ericsson B",          "equity", "Ericsson AB",     "",     "LISTED", ""],
-    ["SE0000242455", "Atlas Copco A",       "equity", "Atlas Copco AB",  "",     "LISTED", ""],
-    ["XS1111111111", "Nordea 2030",         "bond",   "Nordea Bank",     "A",    "",       ""],
-    ["XS2222222222", "Heimstaden 2029",     "bond",   "Heimstaden AB",   "BBB",  "",       ""],
-    ["XS3333333333", "Kommuninvest 2031",   "bond",   "Kommuninvest",    "AA-",  "",       ""],
-    ["XS4444444444", "Castellum 2028",      "bond",   "Castellum AB",    "",     "",       ""],
-    ["LU1111111111", "Global Equity Fund",  "fund",   "Amundi",          "",     "",       "LU"],
-    ["IE2222222222", "Euro Bond Fund",      "fund",   "BlackRock",       "",     "",       "IE"],
-    ["XX0000000001", "Unclassified Note",   "",       "Unknown Issuer",  "",     "",       ""],
-    ["KY1111111111", "Offshore Growth",     "fund",   "Cayman Partners", "",     "",       "KY"],
-    ["SE0000667925", "Investor B",          "equity", "Investor AB",     "",     "LISTED", ""],
+    ["SE0000108656", "Volvo B",            "equity", "Volvo AB",        "",    "LISTED", ""],
+    ["SE0000163594", "Ericsson B",         "equity", "Ericsson AB",     "",    "LISTED", ""],
+    ["SE0000242455", "Atlas Copco A",      "equity", "Atlas Copco AB",  "",    "LISTED", ""],
+    ["XS1111111111", "Nordea 2030",        "bond",   "Nordea Bank",     "A",   "",       ""],
+    ["XS2222222222", "Heimstaden 2029",    "bond",   "Heimstaden AB",   "BBB", "",       ""],
+    ["XS3333333333", "Kommuninvest 2031",  "bond",   "Kommuninvest",    "AA-", "",       ""],
+    ["XS4444444444", "Castellum 2028",     "bond",   "Castellum AB",    "",    "",       ""],
+    ["LU1111111111", "Global Equity Fund", "fund",   "Amundi",          "",    "",       "LU"],
+    ["IE2222222222", "Euro Bond Fund",     "fund",   "BlackRock",       "",    "",       "IE"],
+    ["XX0000000001", "Unclassified Note",  "",       "Unknown Issuer",  "",    "",       ""],
+    ["KY1111111111", "Offshore Growth",    "fund",   "Cayman Partners", "",    "",       "KY"],
+    ["SE0000667925", "Investor B",         "equity", "Investor AB",     "",    "LISTED", ""],
 ]
 
 ACCOUNTS = [
@@ -28,12 +28,17 @@ ACCOUNTS = [
 ]
 
 EVENTS = [
-    ["2026-08-07", "XS2222222222", "RATING_DOWNGRADE", "BBB", "BB"],
-    ["2026-08-07", "SE0000163594", "DELISTING", "LISTED", "DELISTED"],
-    ["2026-08-07", "XS9999999999", "RATING_DOWNGRADE", "A", "BBB+"],
+    ["2026-08-07", "XS2222222222", "RATING_DOWNGRADE", "BBB",   "BB"],
+    ["2026-08-07", "SE0000163594", "DELISTING",         "LISTED","DELISTED"],
+    ["2026-08-07", "XS9999999999", "RATING_DOWNGRADE", "A",     "BBB+"],
 ]
 
-BASE = [i[0] for i in INSTRUMENTS if i[0] not in ("SE0000667925",)]
+# All instruments except INST-12 form the baseline pool.
+# All 11 base instruments go on every account so that each holding sits at
+# ~1/11 ≈ 9 % of account total — safely under the 10 % R-04 limit.
+# Fewer instruments per account would push all holdings over 10 % and create
+# false R-04 breaches everywhere.
+BASE = [r[0] for r in INSTRUMENTS if r[0] != "SE0000667925"]
 
 
 def build_holdings(date, include_new=False):
@@ -43,36 +48,44 @@ def build_holdings(date, include_new=False):
         if include_new and account == "ACC002":
             isins.append("SE0000667925")
 
-        # jämnare spridning, alla nära lika stora
         values = {isin: random.randint(52000, 58000) for isin in isins}
 
         if account == "ACC003":
-            # normalisera övriga nedåt, lyft ett innehav till ~18%
-            others = [i for i in isins if i != "SE0000108656"]
-            for isin in others:
-                values[isin] = random.randint(48000, 52000)
-            values["SE0000108656"] = int(sum(values[i] for i in others) * 0.22)
+            # All non-INST-01 holdings at ~50 k; INST-01 set to 22 % of their
+            # sum so it lands at ~18 % of the account total → R-04 breach.
+            for isin in isins:
+                if isin != "SE0000108656":
+                    values[isin] = random.randint(48000, 52000)
+            others_sum = sum(v for i, v in values.items() if i != "SE0000108656")
+            values["SE0000108656"] = int(others_sum * 0.22)
 
-        for isin, value in values.items():
-            rows.append([date, account, isin, round(value / 100, 2), float(value)])
+        for isin, mv in values.items():
+            qty = round(mv / 100, 2)
+            rows.append([date, account, isin, qty, mv])
     return rows
 
 
 def write(path, header, rows):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
         w.writerow(header)
         w.writerows(rows)
-    print(f"{path}: {len(rows)} rows")
+
+    print(f"\n=== {path}  ({len(rows)} rows) ===")
+    print(",".join(header))
+    for row in rows:
+        print(",".join(str(v) for v in row))
 
 
 write("data/instruments.csv",
       ["isin", "name", "asset_class", "issuer", "rating", "listing_status", "domicile"],
       INSTRUMENTS)
 
-write("data/accounts.csv", ["account_id", "holder_type"], ACCOUNTS)
+write("data/accounts.csv",
+      ["account_id", "holder_type"],
+      ACCOUNTS)
 
 eod_header = ["date", "account_id", "isin", "quantity", "market_value"]
 write("data/eod/holdings_2026-08-05.csv", eod_header, build_holdings("2026-08-05"))
@@ -80,4 +93,111 @@ write("data/eod/holdings_2026-08-06.csv", eod_header, build_holdings("2026-08-06
 write("data/eod/holdings_2026-08-07.csv", eod_header, build_holdings("2026-08-07", include_new=True))
 
 write("data/events/events_2026-08-07.csv",
-      ["date", "isin", "event_type", "old_value", "new_value"], EVENTS)
+      ["date", "isin", "event_type", "old_value", "new_value"],
+      EVENTS)
+
+# ------------------------------------------------------------------
+# data/README.md
+# ------------------------------------------------------------------
+README = """\
+# Sample Data
+
+Generated by `scripts/generate_data.py`.
+
+## data/instruments.csv — 12 rows
+
+| INST | ISIN | Description | Role in test suite |
+|------|------|-------------|-------------------|
+| INST-01 | SE0000108656 | Volvo B — equity, LISTED | Clean. Held on ACC003 at ~18 % of account total → R-04 BREACH (concentration). |
+| INST-02 | SE0000163594 | Ericsson B — equity, LISTED | DELISTING event 2026-08-07 → R-03 BREACH on every holding account. |
+| INST-03 | SE0000242455 | Atlas Copco A — equity, LISTED | Clean baseline. |
+| INST-04 | XS1111111111 | Nordea 2030 — bond, rating A | Clean baseline. |
+| INST-05 | XS2222222222 | Heimstaden 2029 — bond, rating BBB | RATING_DOWNGRADE to BB on 2026-08-07 → R-02 BREACH on every holding account. |
+| INST-06 | XS3333333333 | Kommuninvest 2031 — bond, rating AA- | Clean baseline. |
+| INST-07 | XS4444444444 | Castellum 2028 — bond, rating empty | Missing rating → R-02 UNKNOWN (data-quality probe). |
+| INST-08 | LU1111111111 | Global Equity Fund — fund, domicile LU | Clean (LU is EU/EEA). |
+| INST-09 | IE2222222222 | Euro Bond Fund — fund, domicile IE | Clean (IE is EU/EEA). |
+| INST-10 | XX0000000001 | Unclassified Note — asset_class empty | Missing asset_class → R-01 UNKNOWN (data-quality probe). |
+| INST-11 | KY1111111111 | Offshore Growth — fund, domicile KY | KY outside EU/EEA → R-05 BREACH (standing). |
+| INST-12 | SE0000667925 | Investor B — equity, LISTED | Absent on 08-05/06; first appears on ACC002 on 08-07 → Scenario 1 (new holding). |
+
+## data/accounts.csv — 4 rows
+
+| account_id | holder_type |
+|------------|-------------|
+| ACC001 | private |
+| ACC002 | private |
+| ACC003 | corporate |
+| ACC004 | private |
+
+## data/eod/holdings_2026-08-05.csv — 44 rows
+
+Baseline day. All four accounts hold all 11 base instruments (INST-01 through INST-11).
+With 11 equal-valued holdings each sits at roughly 9 % of account total — under R-04's
+10 % limit. Exception: ACC003/INST-01 set to ~18 % to establish the standing
+concentration breach from day one.
+INST-12 is absent on this day.
+
+## data/eod/holdings_2026-08-06.csv — 44 rows
+
+Identical structure to 08-05 with small market-value drift. INST-12 still absent.
+
+## data/eod/holdings_2026-08-07.csv — 45 rows
+
+SE0000667925 (INST-12, Investor B) appears on ACC002 for the first time — this is the
+new holding that drives Scenario 1.
+INST-02 and INST-05 are present on all four accounts so both events fan out.
+
+## data/events/events_2026-08-07.csv — 3 rows
+
+| Row | ISIN | event_type | old → new | Purpose |
+|-----|------|-----------|-----------|---------|
+| 1 | XS2222222222 | RATING_DOWNGRADE | BBB → BB | Scenario 2 headline: BB is below BBB- floor → R-02 BREACH. |
+| 2 | SE0000163594 | DELISTING | LISTED → DELISTED | Scenario 2: DELISTED equity → R-03 BREACH. |
+| 3 | XS9999999999 | RATING_DOWNGRADE | A → BBB+ | Irrelevant: instrument not in instruments.csv and not held anywhere. Proves the system silently ignores events with no impact. |
+
+## Expected batch output — 2026-08-07
+
+Each breach/unknown below fans out to one finding row per account holding that
+instrument (all four accounts hold most instruments).
+
+| Source | ISIN | Rule | Expected status | Accounts affected |
+|--------|------|------|-----------------|-------------------|
+| Scenario 1 | SE0000667925 | R-01, R-03, R-04 | COMPLIANT | ACC002 (new holding) |
+| Scenario 2 | SE0000163594 | R-03 | BREACH | ACC001, ACC002, ACC003, ACC004 |
+| Scenario 2 | XS2222222222 | R-02 | BREACH | ACC001, ACC002, ACC003, ACC004 |
+| Standing | KY1111111111 | R-05 | BREACH | ACC001, ACC002, ACC003, ACC004 |
+| Standing | SE0000108656 | R-04 | BREACH | ACC003 only (~18 % of account total) |
+| Data quality | XS4444444444 | R-02 | UNKNOWN | ACC001, ACC002, ACC003, ACC004 |
+| Data quality | XX0000000001 | R-01 | UNKNOWN | ACC001, ACC002, ACC003, ACC004 |
+
+All other findings: COMPLIANT.
+
+### Concentration check
+
+Rule R-04 checks each holding's market_value against 10 % of that account's total.
+
+| Account | INST-01 % of total | All other holdings |
+|---------|--------------------|--------------------|
+| ACC001, ACC002, ACC004 | ~9 % | ~9 % each — COMPLIANT |
+| ACC003 | ~18 % — **BREACH** | ~8 % each — COMPLIANT |
+"""
+
+readme_path = Path("data/README.md")
+readme_path.write_text(README, encoding="utf-8")
+print("\n=== data/README.md written ===")
+
+# ------------------------------------------------------------------
+# Summary
+# ------------------------------------------------------------------
+print("\n=== Row-count summary ===")
+summary = [
+    ("data/instruments.csv",              len(INSTRUMENTS)),
+    ("data/accounts.csv",                 len(ACCOUNTS)),
+    ("data/eod/holdings_2026-08-05.csv",  44),
+    ("data/eod/holdings_2026-08-06.csv",  44),
+    ("data/eod/holdings_2026-08-07.csv",  45),
+    ("data/events/events_2026-08-07.csv", len(EVENTS)),
+]
+for path, n in summary:
+    print(f"  {path}: {n} rows")

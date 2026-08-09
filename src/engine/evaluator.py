@@ -18,14 +18,18 @@ def evaluate_rule(rule, instrument, holding, account_total):
     field = rule["field"]
 
     if field in holding:
-        acutal = holding.get(field)
+        actual = holding.get(field)
     else:
-        acutal = instrument.get(field)
+        actual = instrument.get(field)
 
+    computed = None
     if rule["scope"] == "portfolio":
-        result, reason = operator(acutal, rule["threshold"], account_total)
+        result, reason, computed = operator(actual, rule["threshold"], account_total)
     else:
-        result, reason = operator(acutal, rule["threshold"])
+        result, reason = operator(actual, rule["threshold"])
+
+    if reason == "value missing":
+        reason = f"{field} missing"
 
     if result is None:
         status = "UNKNOWN"
@@ -41,7 +45,7 @@ def evaluate_rule(rule, instrument, holding, account_total):
         "status": status,
         "field": field,
         "threshold": rule["threshold"],
-        "actual": acutal,
+        "actual": computed if computed is not None else actual,
         "severity": rule["severity"],
         "reason": reason
     }
