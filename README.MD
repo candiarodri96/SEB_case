@@ -78,9 +78,13 @@ Stored as data in `policy/policy_v1.json`, not as hard coded conditionals.
 
 | Rule ID | Rule | Applies to | Rationale |
 |---------|------|-----------|-----------|
-| R-01 | ... | ... | ... |
+| R-01 | Only equities, bonds and funds | All | The product is defined for these. Derivatives and structured products need different risk handling. |
 | R-02 | Minimum credit rating BBB- | Bonds | BBB- is the investment grade floor. Below it the risk profile is materially different from what the product implies. |
-| R-03 | ... | ... | ... |
+| R-03 | Must be listed on a regulated market | Equities | Unlisted holdings cannot be valued daily or sold when the customer wants to withdraw. |
+| R-04 | Max 10% of account value per instrument | All | Concentration risk. The only portfolio level rule. |
+| R-05 | Fund domicile within EU/EEA | Funds | Outside the EEA there is often no supervision or reporting that can be relied on. |
+
+Notera att R-03 är den som gör delisting till ett brott och R-02 den som gör
 
 Rules have scope. **Instrument level** rules (rating, asset class, listing status) depend
 only on the ISIN, so they are evaluated once and reused across every account holding it.
