@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.db.connection import get_connection
+from src.ai.explainer import group_findings, explain
+
 
 app = FastAPI(title="Portfolio Monitor")
 
@@ -49,3 +51,13 @@ def summary(date: str):
         (date,),
     )
     return {r["status"]: r["n"] for r in rows}
+
+
+@app.get("/api/explanations/{date}")
+def explanations(date: str):
+    findings = query("SELECT * FROM findings WHERE run_date = ?", (date,))
+    names = {r["isin"]: r["name"] for r in query("SELECT isin, name FROM instruments")}
+    groups = group_findings(findings)
+    for g in groups:
+        g["explanation"] = explain(g, names.get(g["isin"]))
+    return groups
