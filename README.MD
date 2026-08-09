@@ -203,8 +203,14 @@ I started with no background in financial instruments or compliance and used Cla
 It was also used to challenge my framing. My first mind map designed an investment advisor, recommending assets to a customer and weighing risk against opportunity. The case asks for a compliance monitor serving an internal officer. That reframing changed the entire design.
 
 ### How I validated output
+The AI generated a version of evaluate_all where return findings sat inside the loop
+rather than after it. Three other errors in the same file raised exceptions immediately,
+but this one did not. Nothing in the output indicated that anything was wrong: the
+function ran, returned a valid list, and reported findings for the first holding only.
 
-...
+I found it by running the engine against test data where I knew in advance how many
+breaches should appear, not by reading the code. That is why the sample data contains
+deliberately planted breaches. It gives me an expected count to check against.
 
 ### What I changed manually
 
@@ -212,7 +218,13 @@ It was also used to challenge my framing. My first mind map designed an investme
 
 ### Limitations encountered
 
-...
+AI generated code is effective as long as you test it and know the expected outcome
+beforehand. The risk is not that it writes bad code, it is that it writes plausible code
+that fails quietly. Reading it is not enough to catch that.
+
+The larger limitation is ownership. If I had handed over more of the design, I would have
+ended up with a product I could not explain or defend. I kept the rule engine and the
+evaluator hand written for that reason. Those are the files the whole system rests on.
 
 ## 13. Running the project
 

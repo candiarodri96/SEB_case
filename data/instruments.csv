@@ -1,0 +1,13 @@
+isin,name,asset_class,issuer,rating,listing_status,domicile
+SE0000108656,Volvo B,equity,Volvo AB,,LISTED,
+SE0000163594,Ericsson B,equity,Ericsson AB,,LISTED,
+SE0000242455,Atlas Copco A,equity,Atlas Copco AB,,LISTED,
+XS1111111111,Nordea 2030,bond,Nordea Bank,A,,
+XS2222222222,Heimstaden 2029,bond,Heimstaden AB,BBB,,
+XS3333333333,Kommuninvest 2031,bond,Kommuninvest,AA-,,
+XS4444444444,Castellum 2028,bond,Castellum AB,,,
+LU1111111111,Global Equity Fund,fund,Amundi,,,LU
+IE2222222222,Euro Bond Fund,fund,BlackRock,,,IE
+XX0000000001,Unclassified Note,,Unknown Issuer,,,
+KY1111111111,Offshore Growth,fund,Cayman Partners,,,KY
+SE0000667925,Investor B,equity,Investor AB,,LISTED,
