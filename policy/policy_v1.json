@@ -1,0 +1,56 @@
+{
+  "policy_version": "v1",
+  "effective_from": "2026-01-01",
+  "rules": [
+    {
+      "rule_id": "R-01",
+      "description": "Only equities, bonds and funds are permitted",
+      "applies_to": {},
+      "field": "asset_class",
+      "operator": "in_list",
+      "threshold": ["equity", "bond", "fund"],
+      "severity": "high",
+      "scope": "instrument"
+    },
+    {
+      "rule_id": "R-02",
+      "description": "Bonds must be investment grade",
+      "applies_to": { "asset_class": "bond" },
+      "field": "rating",
+      "operator": "min_rating",
+      "threshold": "BBB-",
+      "severity": "high",
+      "scope": "instrument"
+    },
+    {
+      "rule_id": "R-03",
+      "description": "Equities must be listed on a regulated market",
+      "applies_to": { "asset_class": "equity" },
+      "field": "listing_status",
+      "operator": "equals",
+      "threshold": "LISTED",
+      "severity": "high",
+      "scope": "instrument"
+    },
+    {
+      "rule_id": "R-04",
+      "description": "No single instrument above 10% of account value",
+      "applies_to": {},
+      "field": "market_value",
+      "operator": "max_percentage_of_account",
+      "threshold": 10.0,
+      "severity": "medium",
+      "scope": "portfolio"
+    },
+    {
+      "rule_id": "R-05",
+      "description": "Funds must be domiciled within the EU/EEA",
+      "applies_to": { "asset_class": "fund" },
+      "field": "domicile",
+      "operator": "in_list",
+      "threshold": ["SE", "LU", "IE", "DK", "NO", "FI", "DE", "FR", "NL"],
+      "severity": "medium",
+      "scope": "instrument"
+    }
+  ]
+}
