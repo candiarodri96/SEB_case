@@ -176,6 +176,11 @@ AI affects presentation, never the outcome:
 - **Prioritisation.** Forty flags are not equally urgent, and ordering is judgement rather than calculation.
 - **Classification of unknown instruments.** When an instrument arrives without an asset class, the model proposes one from its name and issuer. The result is marked as a suggestion requiring confirmation. It never enters the register as fact.
 
+he layer has a deterministic template fallback. When no API key is present, or the call
+fails, each finding still gets a readable sentence built from the same fields. The demo runs
+without a key, which is also the clearest demonstration that the layer is optional: the
+findings, the counts and the outcomes are identical either way.
+
 ## 10. Considered and rejected
 
 **Anomaly detection over the EOD file.** My first instinct was that an EOD file is a lot of data, so the search should be made efficient by looking for deviating patterns, the way a tax authority screens returns. I rejected it. Pattern screening answers "what looks unusual", which is a different question from "what breaks the rule". A breach can be statistically unremarkable, and an outlier can be perfectly compliant. A control that samples cannot demonstrate coverage, and coverage is the point of a second line control.
@@ -216,7 +221,7 @@ The same approach caught two more problems. An agent reported the sample data as
 
 ### What I changed manually
 
-The rule engine and the evaluator I typed by hand rather than generating. They are the two files the whole system rests on, and they are the ones I expect to be asked about.
+The rule engine and the evaluator I typed by hand rather than generating. They are the two files the whole system rests on.
 
 I dropped Postgres for SQLite. A real system would use Postgres, but for a prototype it adds a container and a connection string without changing the schema. The repository layer is the only thing that would differ.
 
