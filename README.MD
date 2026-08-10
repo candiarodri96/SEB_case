@@ -176,7 +176,7 @@ AI affects presentation, never the outcome:
 - **Prioritisation.** Forty flags are not equally urgent, and ordering is judgement rather than calculation.
 - **Classification of unknown instruments.** When an instrument arrives without an asset class, the model proposes one from its name and issuer. The result is marked as a suggestion requiring confirmation. It never enters the register as fact.
 
-he layer has a deterministic template fallback. When no API key is present, or the call
+The layer has a deterministic template fallback. When no API key is present, or the call
 fails, each finding still gets a readable sentence built from the same fields. The demo runs
 without a key, which is also the clearest demonstration that the layer is optional: the
 findings, the counts and the outcomes are identical either way.
