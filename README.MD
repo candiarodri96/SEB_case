@@ -46,7 +46,7 @@ I skipped the other two options. *Policy breach → action* is the tail end of t
 The EOD file and the corporate event file are read in the same nightly run. The EOD file
 is compared against every ISIN ever seen to find new holdings. The event file updates the
 instrument register, and every account holding that ISIN is re-evaluated. Both paths end
-in the same rule engine, which reads the rules from `policy.json` and the instrument facts
+in the same rule engine, which reads the rules from `policy_v1.json` and the instrument facts
 from the register, and returns `COMPLIANT`, `BREACH` or `UNKNOWN` per holding and rule.
 
 Two things follow from this:
@@ -74,8 +74,6 @@ defensible too, it just generates repeat noise.
 
 Stored as data in `policy/policy_v1.json`, not as hard coded conditionals.
 
-<!-- TODO: fill in once the policy is finalised -->
-
 | Rule ID | Rule | Applies to | Rationale |
 |---------|------|-----------|-----------|
 | R-01 | Only equities, bonds and funds | All | The product is defined for these. Derivatives and structured products need different risk handling. |
@@ -83,8 +81,6 @@ Stored as data in `policy/policy_v1.json`, not as hard coded conditionals.
 | R-03 | Must be listed on a regulated market | Equities | Unlisted holdings cannot be valued daily or sold when the customer wants to withdraw. |
 | R-04 | Max 10% of account value per instrument | All | Concentration risk. The only portfolio level rule. |
 | R-05 | Fund domicile within EU/EEA | Funds | Outside the EEA there is often no supervision or reporting that can be relied on. |
-
-Notera att R-03 är den som gör delisting till ett brott och R-02 den som gör
 
 Rules have scope. **Instrument level** rules (rating, asset class, listing status) depend
 only on the ISIN, so they are evaluated once and reused across every account holding it.
@@ -127,25 +123,29 @@ COMPLIANT results are logged rather than discarded. It has to be possible to dem
 
 ## 7. Data model
 
-<!-- TODO: expand once schema.sql is final -->
-
 | Table | Purpose |
 |-------|---------|
 | accounts | Account ID, holder type (private / corporate) |
-| instruments | One row per ISIN: asset class, issuer, rating, listing status, domicile. Not one row per purchase — instrument facts belong to the ISIN. |
+| instruments | One row per ISIN: asset class, issuer, rating, listing status, domicile. Not one row per purchase, instrument facts belong to the ISIN. |
 | holdings | One row per account × ISIN × date: quantity, market value |
 | corporate_events | Date, ISIN, event type, old value, new value |
-| findings | Outcome per holding × rule per run: rule_id, status, threshold, actual value |
+| findings | Outcome per holding × rule per run: rule_id, status, threshold, actual, severity, reason, is_new, is_affected |
 
-The EOD file deliberately carries no instrument characteristics — only ISIN and quantity. Instrument facts come from a separate register. Keeping them separate reflects reality (they come from different sources and change at different rates) and is what makes an event-driven update of a single instrument propagate to every account holding it.
+The EOD file deliberately carries no instrument characteristics, only ISIN and quantity.
+Instrument facts come from a separate register. Keeping them separate reflects reality, since
+they come from different sources and change at different rates, and it is what makes an event
+driven update of a single instrument propagate to every account holding it.
+
+`is_new` and `is_affected` on a finding record which scenario triggered the evaluation. The
+rule engine does not set them, since it does not know why it was called. The batch does.
 
 ## 8. Assumptions
 
-- A pre-trade eligibility control exists in the trading system. This prototype is the independent second-line check.
+- A pre-trade eligibility control exists in the trading system. This prototype is the independent second line check.
 - EOD files are state snapshots, not transaction logs. New holdings are derived by comparison, not announced.
 - Corporate events arrive as a structured feed from a data vendor, not scraped from news. The sample event file simulates this.
-- The system flags for human decision; it never divests automatically. Selection is automated, judgement is not.
-- Sample data is authored to demonstrate specific scenarios, including deliberate missing-data cases.
+- The system flags for human decision. It never divests automatically. Selection is automated, judgement is not.
+- Sample data is authored to demonstrate specific scenarios, including deliberate missing data cases.
 
 ## 9. Key design decisions
 
@@ -153,9 +153,13 @@ The EOD file deliberately carries no instrument characteristics — only ISIN an
 
 Hard coded conditionals work, but the policy then only exists scattered through source code. Changing a concentration limit from 10% to 8% would need a developer and a deploy, and there would be nothing to point at when asked what the policy is.
 
-Storing rules as JSON gives three things: the policy can change without a deploy, rule_id travels through to the UI as the audit trail, and the file can be versioned, so "which policy applied on 3 March" is answerable.
+Storing rules as JSON gives three things: the policy can change without a deploy, `rule_id` travels through to the UI as the audit trail, and the file can be versioned, so "which policy applied on 3 March" is answerable.
 
 The trade off is that this replaces simple conditionals with a small interpreter that has to be written and tested. For three rules it is over engineering. For a system meant to live, it is correct.
+
+### SQLite rather than Postgres
+
+SQLite keeps setup at zero for a prototype: no container, no server, no connection string. The repository layer is the only place that would change for Postgres, which is what a production system would use. The schema itself is the same either way.
 
 ### A deterministic rule engine, with no LLM in it
 
@@ -167,34 +171,32 @@ It is also the right tool. Comparing two values against a threshold is ordinary 
 
 AI affects presentation, never the outcome:
 
-- **Plain language explanation.** The engine emits rule_id / threshold / actual, which is correct and unreadable. The model turns it into a sentence a human can act on.
+- **Plain language explanation.** The engine emits `rule_id / threshold / actual`, which is correct and unreadable. The model turns it into a sentence a human can act on.
 - **Grouping.** Five breaches stemming from one issuer downgrade are one problem, not five.
 - **Prioritisation.** Forty flags are not equally urgent, and ordering is judgement rather than calculation.
 - **Classification of unknown instruments.** When an instrument arrives without an asset class, the model proposes one from its name and issuer. The result is marked as a suggestion requiring confirmation. It never enters the register as fact.
 
 ## 10. Considered and rejected
 
-Anomaly detection over the EOD file. My first instinct was that an EOD file is a lot of data, so the search should be made efficient by looking for deviating patterns, the way a tax authority screens returns. I rejected it. Pattern screening answers "what looks unusual", which is a different question from "what breaks the rule". A breach can be statistically unremarkable, and an outlier can be perfectly compliant. A control that samples cannot demonstrate coverage, and coverage is the point of a second line control.
+**Anomaly detection over the EOD file.** My first instinct was that an EOD file is a lot of data, so the search should be made efficient by looking for deviating patterns, the way a tax authority screens returns. I rejected it. Pattern screening answers "what looks unusual", which is a different question from "what breaks the rule". A breach can be statistically unremarkable, and an outlier can be perfectly compliant. A control that samples cannot demonstrate coverage, and coverage is the point of a second line control.
 
 The volume concern was also wrong. Rule evaluation is cheap, and instrument level rules run once per ISIN rather than once per holding. The scarce resource is the compliance officer's attention, which is a prioritisation problem downstream of evaluation, not a reason to evaluate less.
 
-An LLM as the rule engine. Rejected for determinism and auditability, see above.
+**An LLM as the rule engine.** Rejected for determinism and auditability, see above.
 
-RAG over the policy document. Retrieval and interpretation are right when a rule is ambiguous prose. These rules are not: "is the rating below BBB-" is a comparison between two values. RAG would introduce non-determinism to solve a problem that does not exist here. It would suit a different project, deriving machine readable rules from a real policy document, which is out of scope.
+**RAG over the policy document.** Retrieval and interpretation are right when a rule is ambiguous prose. These rules are not: "is the rating below BBB-" is a comparison between two values. RAG would introduce non-determinism to solve a problem that does not exist here. It would suit a different project, deriving machine readable rules from a real policy document, which is out of scope.
 
-A multi agent architecture. An early sketch had separate agents for detection, news monitoring and analysis. The coordination overhead would have consumed the time budget without improving the output, and the core has to be deterministic regardless.
+**A multi agent architecture.** An early sketch had separate agents for detection, news monitoring and analysis. The coordination overhead would have consumed the time budget without improving the output, and the core has to be deterministic regardless.
 
 ## 11. Possible extensions
 
-Proximity to breach score. A holding at 9.2% against a 10% limit is not a breach, but it will be tomorrow if the price moves. A bond at exactly BBB- is one downgrade from failing. Surfacing this would let the officer act before the breach rather than after.
+**Proximity to breach score.** A holding at 9.2% against a 10% limit is not a breach, but it will be tomorrow if the price moves. A bond at exactly BBB- is one downgrade from failing. Surfacing this would let the officer act before the breach rather than after.
 
-If built, it has to be kept strictly separate from compliance status. A holding is COMPLIANT or BREACH, determined by the rule, with no grey scale. A proximity score is a separate column for prioritisation, never a judgement about compliance. Mixing them produces "somewhat in breach", which is not defensible in an audit.
+If built, it has to be kept strictly separate from compliance status. A holding is `COMPLIANT` or `BREACH`, determined by the rule, with no grey scale. A proximity score is a separate column for prioritisation, never a judgement about compliance. Mixing them produces "somewhat in breach", which is not defensible in an audit.
 
 Other extensions: issuer level aggregation across instruments, policy version history with as of queries, a remediation workflow with case status.
 
 ## 12. Use of AI in building this
-
-<!-- TODO: fill in as you go -->
 
 ### Where it was used
 
@@ -202,41 +204,65 @@ I started with no background in financial instruments or compliance and used Cla
 
 It was also used to challenge my framing. My first mind map designed an investment advisor, recommending assets to a customer and weighing risk against opportunity. The case asks for a compliance monitor serving an internal officer. That reframing changed the entire design.
 
-### How I validated output
-The AI generated a version of evaluate_all where return findings sat inside the loop
-rather than after it. Three other errors in the same file raised exceptions immediately,
-but this one did not. Nothing in the output indicated that anything was wrong: the
-function ran, returned a valid list, and reported findings for the first holding only.
+The frontend was generated. The rule engine and the evaluator were not.
 
-I found it by running the engine against test data where I knew in advance how many
-breaches should appear, not by reading the code. That is why the sample data contains
-deliberately planted breaches. It gives me an expected count to check against.
+### How I validated output
+
+The AI generated a version of `evaluate_all` where `return findings` sat inside the loop rather than after it. Three other errors in the same file raised exceptions immediately, but this one did not. Nothing in the output indicated that anything was wrong: the function ran, returned a valid list, and reported findings for the first holding only.
+
+I found it by running the engine against test data where I knew in advance how many breaches should appear, not by reading the code. That is why the sample data contains deliberately planted breaches. It gives me an expected count to check against.
+
+The same approach caught two more problems. An agent reported the sample data as generated when the files were zero bytes: the loaders returned empty lists, and the batch would have run to completion reporting no breaches at all. And on the first data generation, seven holdings breached the concentration limit rather than the one I intended, because the random range was too wide. Neither would have been visible without checking the numbers against an expectation.
 
 ### What I changed manually
 
-...
+The rule engine and the evaluator I typed by hand rather than generating. They are the two files the whole system rests on, and they are the ones I expect to be asked about.
+
+I dropped Postgres for SQLite. A real system would use Postgres, but for a prototype it adds a container and a connection string without changing the schema. The repository layer is the only thing that would differ.
+
+I stopped delegating file generation to the agent after the zero byte incident and wrote the generator script myself, which also made the sample data reproducible.
+
+I changed the concentration rule to report the computed percentage rather than the raw market value. The first version showed `threshold 10.0, actual 109623.0`, which is correct but unreadable. The two numbers now share a unit.
+
+I also rewrote most of the generated prose in my own words. Text I could not say out loud without reading it was text I did not understand well enough to defend, so it went. The first draft of this README ran to roughly three times its current length.
 
 ### Limitations encountered
 
-AI generated code is effective as long as you test it and know the expected outcome
-beforehand. The risk is not that it writes bad code, it is that it writes plausible code
-that fails quietly. Reading it is not enough to catch that.
+AI generated code is effective as long as you test it and know the expected outcome beforehand. The risk is not that it writes bad code, it is that it writes plausible code that fails quietly. Reading it is not enough to catch that. Three of the four problems above produced no error at all: an empty file, a truncated loop, and a silent count.
 
-The larger limitation is ownership. If I had handed over more of the design, I would have
-ended up with a product I could not explain or defend. I kept the rule engine and the
-evaluator hand written for that reason. Those are the files the whole system rests on.
+The larger limitation is ownership. If I had handed over more of the design, I would have ended up with a product I could not explain or defend.
+
+A known limitation of the system itself: the instrument register holds current state only. Each run reloads it from the source file and then applies that day's events, which works when days are processed in order but means the register is not a true accumulated history. Re-running an earlier date would evaluate against whatever the register looks like now. An `instrument_history` table with as-of lookups would fix it, and `corporate_events` already holds the raw material.
 
 ## 13. Running the project
 
-<!-- TODO -->
+Backend:
 
 ```bash
-docker compose up -d          # Postgres
 pip install -r requirements.txt
-python -m src.batch.run_daily --date 2026-08-07
+python scripts/generate_data.py
+python -m src.batch.run_daily 2026-08-05
+python -m src.batch.run_daily 2026-08-06
+python -m src.batch.run_daily 2026-08-07
 uvicorn src.api.main:app --reload
+```
+
+The three dates must be run in order. The batch derives new holdings by comparing against earlier runs, so starting at the last date would report everything as new.
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Tests:
+
+```bash
+python -m pytest tests/ -v
 ```
 
 ## 14. Tech stack
 
-Python · PostgreSQL · FastAPI · <!-- TODO frontend -->
+Python · SQLite · FastAPI · React (Vite)
